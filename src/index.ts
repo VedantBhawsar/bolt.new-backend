@@ -3,6 +3,9 @@ import dotenv from "dotenv";
 import express from "express";
 import { basePrompt as reactBasePrompt } from "./details/react";
 import { basePrompt as nodeBasePrompt } from "./details/node";
+import { BASE_PROMPT, getSystemPrompt } from "./prompt";
+
+dotenv.config();
 
 // constants
 const PORT = process.env.PORT || 3000;
@@ -11,13 +14,14 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const app = express();
 
 // middleware
-dotenv.config();
 app.use(express.json());
 
 const googleAI = new GoogleGenerativeAI(GEMINI_API_KEY!);
+``;
+
 
 // routes
-app.get("/template", async (req, res) => {
+app.post("/template", async (req, res) => {
   try {
     const { prompt } = req.body;
 
@@ -25,9 +29,6 @@ app.get("/template", async (req, res) => {
       res.status(400).json({ error: "Prompt is required" });
       return;
     }
-
-    res.setHeader("Content-Type", "text/plain");
-    res.setHeader("Transfer-Encoding", "chunked");
 
     const projectTypeModel = googleAI.getGenerativeModel({
       model: "gemini-2.0-flash-exp",
@@ -42,6 +43,7 @@ app.get("/template", async (req, res) => {
     });
 
     const projectTypeChat = projectTypeModel.startChat();
+    
     const { response: typeResponse } = await projectTypeChat.sendMessage(
       prompt
     );
@@ -51,22 +53,23 @@ app.get("/template", async (req, res) => {
       res.status(500).json({ error: "Failed to determine project type" });
       return;
     }
-
-    const finalModel = googleAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",
-      systemInstruction:
-        projectType === "reactjs" ? reactBasePrompt : nodeBasePrompt,
-    });
-
-    const finalChat = finalModel.startChat();
-    const result = await finalChat.sendMessageStream(prompt);
-
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      res.write(chunkText);
+    if (projectType === "reactjs") {
+      res.status(200).json({
+        prompts: [
+          BASE_PROMPT,
+          `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`,
+        ],
+        uiPrompts: [reactBasePrompt],
+      });
+    } else {
+      res.status(200).json({
+        prompts: [
+          `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`,
+        ],
+        uiPrompts: [nodeBasePrompt],
+      });
     }
-
-    res.end();
+    res.status(200).send("you can't access this resources");
     return;
   } catch (error: any) {
     console.error("Error processing request:", error);
@@ -77,6 +80,46 @@ app.get("/template", async (req, res) => {
       });
       return;
     }
+  }
+});
+
+app.post("/chat", async (req, res) => {
+  try {
+    const { messages } = req.body;
+    if (typeof messages !== "object") {
+      res.status(400).json({
+        message: "message is required",
+      });
+      return;
+    }
+    const model = googleAI.getGenerativeModel({
+      model: "gemini-2.0-flash-exp",
+      systemInstruction: {
+        role: "system",
+        parts: [
+          {
+            text: getSystemPrompt(),
+          },
+        ],
+      },
+    });
+
+    const chat = model.startChat({
+      history: messages,
+    });
+
+    const { response } = await chat.sendMessage("");
+
+    res.status(200).json({
+      message: response.text(),
+    });
+    return;
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      error,
+    });
+    return;
   }
 });
 
