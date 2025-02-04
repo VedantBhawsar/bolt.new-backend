@@ -4,6 +4,8 @@ import express from "express";
 import { basePrompt as reactBasePrompt } from "./details/react";
 import { basePrompt as nodeBasePrompt } from "./details/node";
 import { BASE_PROMPT, getSystemPrompt } from "./prompt";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
@@ -13,12 +15,19 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const app = express();
 
+const limiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
 // middleware
 app.use(express.json());
+app.use(cors());
+app.use(limiter);
 
 const googleAI = new GoogleGenerativeAI(GEMINI_API_KEY!);
-``;
-
 
 // routes
 app.post("/template", async (req, res) => {
@@ -27,7 +36,6 @@ app.post("/template", async (req, res) => {
 
     if (!prompt) {
       res.status(400).json({ error: "Prompt is required" });
-      return;
     }
 
     const projectTypeModel = googleAI.getGenerativeModel({
@@ -43,7 +51,7 @@ app.post("/template", async (req, res) => {
     });
 
     const projectTypeChat = projectTypeModel.startChat();
-    
+
     const { response: typeResponse } = await projectTypeChat.sendMessage(
       prompt
     );
@@ -51,7 +59,6 @@ app.post("/template", async (req, res) => {
 
     if (!["reactjs", "nodejs"].includes(projectType)) {
       res.status(500).json({ error: "Failed to determine project type" });
-      return;
     }
     if (projectType === "reactjs") {
       res.status(200).json({
@@ -70,7 +77,6 @@ app.post("/template", async (req, res) => {
       });
     }
     res.status(200).send("you can't access this resources");
-    return;
   } catch (error: any) {
     console.error("Error processing request:", error);
     if (!res.headersSent) {
@@ -78,19 +84,17 @@ app.post("/template", async (req, res) => {
         error: "Internal server error",
         details: error.message,
       });
-      return;
     }
   }
 });
 
 app.post("/chat", async (req, res) => {
   try {
-    const { messages } = req.body;
+    const { messages, history } = req.body;
     if (typeof messages !== "object") {
       res.status(400).json({
         message: "message is required",
       });
-      return;
     }
     const model = googleAI.getGenerativeModel({
       model: "gemini-2.0-flash-exp",
@@ -109,23 +113,19 @@ app.post("/chat", async (req, res) => {
     });
 
     const { response } = await chat.sendMessage("");
-
     res.status(200).json({
       message: response.text(),
     });
-    return;
   } catch (error) {
     console.log(error);
     res.status(500).json({
       error,
     });
-    return;
   }
 });
 
 app.get("/", async (req, res) => {
   res.send("working");
-  return;
 });
 
 app.listen(PORT, () => {
