@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema } from "mongoose";
 
 interface IProject extends Document {
   title: string;
@@ -9,6 +9,8 @@ interface IProject extends Document {
   userId: mongoose.Types.ObjectId;
   isPublic: boolean;
   tags?: string[];
+  files: any;
+  chatHistory?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,7 +19,7 @@ const ProjectSchema = new Schema<IProject>(
   {
     title: {
       type: String,
-      required: [true, 'Title is required'],
+      required: [true, "Title is required"],
       trim: true,
     },
     description: {
@@ -26,19 +28,19 @@ const ProjectSchema = new Schema<IProject>(
     },
     html: {
       type: String,
-      default: '',
+      default: "",
     },
     css: {
       type: String,
-      default: '',
+      default: "",
     },
     js: {
       type: String,
-      default: '',
+      default: "",
     },
     userId: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
     },
     isPublic: {
@@ -51,6 +53,14 @@ const ProjectSchema = new Schema<IProject>(
         trim: true,
       },
     ],
+    files: {
+      type: Schema.Types.Mixed,
+      required: true,
+    },
+    chatHistory: {
+      type: [String],
+      default: [],
+    },
   },
   { timestamps: true }
 );
@@ -60,8 +70,8 @@ ProjectSchema.index({ userId: 1, createdAt: -1 });
 
 // Create text index for search functionality
 ProjectSchema.index(
-  { title: 'text', description: 'text', tags: 'text' },
+  { title: "text", description: "text", tags: "text" },
   { weights: { title: 3, description: 2, tags: 1 } }
 );
 
-export const Project = mongoose.model<IProject>('Project', ProjectSchema);
+export const Project = mongoose.model<IProject>("Project", ProjectSchema);

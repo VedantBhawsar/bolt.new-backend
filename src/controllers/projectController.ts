@@ -1,71 +1,76 @@
-import { Request, Response } from 'express';
-import { Project } from '../models/Project';
-import mongoose from 'mongoose';
+import { Request, Response } from "express";
+import { Project, IProject } from "../models/Project";
+import mongoose from "mongoose";
 
 // Create a new project
-export const createProject = async (req: Request, res: Response): Promise<void> => {
+export const createProject = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const { title, description, html, css, js, isPublic, tags } = req.body;
+    // Destructure files and chatHistory
+    const { title, description, files, isPublic, tags, chatHistory } = req.body;
     const userId = req.user?.id;
 
-    // Validate input
-    if (!title) {
-      res.status(400).json({ message: 'Project title is required' });
+    // Validate title and files
+    if (!title || !files) {
+      res.status(400).json({ message: "Project title and files are required" });
       return;
     }
 
-    // Create new project
+    // Create new project instance with files and chatHistory
     const project = new Project({
       title,
       description,
-      html: html || '',
-      css: css || '',
-      js: js || '',
+      files, // Save the files structure
       userId,
       isPublic: isPublic || false,
       tags: tags || [],
+      chatHistory: chatHistory || [], // Save chat history
     });
 
     await project.save();
 
-    res.status(201).json({
-      message: 'Project created successfully',
-      project,
-    });
+    // Return the full project object
+    res.status(201).json(project);
   } catch (error: any) {
-    console.error('Create project error:', error);
+    console.error("Create project error:", error);
     res.status(500).json({
-      message: 'Failed to create project',
+      message: "Failed to create project",
       error: error.message,
     });
   }
 };
 
 // Get all projects for user
-export const getUserProjects = async (req: Request, res: Response): Promise<void> => {
+export const getUserProjects = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.user?.id;
     const { page = 1, limit = 10, search } = req.query;
-    
+
     const pageNum = parseInt(page as string, 10);
     const limitNum = parseInt(limit as string, 10);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build query
     const query: any = { userId };
-    
-    // Add search functionality if provided
+
     if (search) {
-      query.$text = { $search: search as string };
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
     }
 
-    // Execute query with pagination
+    // Select minimal fields for list view
     const projects = await Project.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ updatedAt: -1 })
       .skip(skip)
-      .limit(limitNum);
+      .limit(limitNum)
+      .select("title description isPublic tags createdAt updatedAt");
 
-    // Get total count for pagination
     const total = await Project.countDocuments(query);
 
     res.status(200).json({
@@ -78,53 +83,60 @@ export const getUserProjects = async (req: Request, res: Response): Promise<void
       },
     });
   } catch (error: any) {
-    console.error('Get user projects error:', error);
+    console.error("Get user projects error:", error);
     res.status(500).json({
-      message: 'Failed to get projects',
+      message: "Failed to get projects",
       error: error.message,
     });
   }
 };
 
 // Get project by ID
-export const getProjectById = async (req: Request, res: Response): Promise<void> => {
+export const getProjectById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { id } = req.params;
     const userId = req.user?.id;
 
-    // Validate project ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      res.status(400).json({ message: 'Invalid project ID' });
+      res.status(400).json({ message: "Invalid project ID" });
       return;
     }
 
-    // Find project
     const project = await Project.findById(id);
 
-    // Check if project exists
     if (!project) {
-      res.status(404).json({ message: 'Project not found' });
+      res.status(404).json({ message: "Project not found" });
       return;
     }
 
-    // Check if user owns project or project is public
     if (project.userId.toString() !== userId && !project.isPublic) {
-      res.status(403).json({ message: 'Not authorized to access this project' });
+      res
+        .status(403)
+        .json({ message: "Not authorized to access this project" });
+      res
+        .status(403)
+        .json({ message: "Not authorized to access this project" });
       return;
     }
 
     res.status(200).json({ project });
   } catch (error: any) {
-    console.error('Get project error:', error);
+    console.error("Get project error:", error);
     res.status(500).json({
-      message: 'Failed to get project',
+      message: "Failed to get project",
       error: error.message,
     });
   }
 };
 
 // Update project
-export const updateProject = async (req: Request, res: Response): Promise<void> => {
+export const updateProject = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { id } = req.params;
     const { title, description, html, css, js, isPublic, tags } = req.body;
@@ -132,7 +144,7 @@ export const updateProject = async (req: Request, res: Response): Promise<void> 
 
     // Validate project ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      res.status(400).json({ message: 'Invalid project ID' });
+      res.status(400).json({ message: "Invalid project ID" });
       return;
     }
 
@@ -141,19 +153,22 @@ export const updateProject = async (req: Request, res: Response): Promise<void> 
 
     // Check if project exists
     if (!project) {
-      res.status(404).json({ message: 'Project not found' });
+      res.status(404).json({ message: "Project not found" });
       return;
     }
 
     // Check if user owns project
     if (project.userId.toString() !== userId) {
-      res.status(403).json({ message: 'Not authorized to update this project' });
+      res
+        .status(403)
+        .json({ message: "Not authorized to update this project" });
       return;
     }
 
     // Update project fields
     project.title = title || project.title;
-    project.description = description !== undefined ? description : project.description;
+    project.description =
+      description !== undefined ? description : project.description;
     project.html = html !== undefined ? html : project.html;
     project.css = css !== undefined ? css : project.css;
     project.js = js !== undefined ? js : project.js;
@@ -163,27 +178,30 @@ export const updateProject = async (req: Request, res: Response): Promise<void> 
     await project.save();
 
     res.status(200).json({
-      message: 'Project updated successfully',
+      message: "Project updated successfully",
       project,
     });
   } catch (error: any) {
-    console.error('Update project error:', error);
+    console.error("Update project error:", error);
     res.status(500).json({
-      message: 'Failed to update project',
+      message: "Failed to update project",
       error: error.message,
     });
   }
 };
 
 // Delete project
-export const deleteProject = async (req: Request, res: Response): Promise<void> => {
+export const deleteProject = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { id } = req.params;
     const userId = req.user?.id;
 
     // Validate project ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      res.status(400).json({ message: 'Invalid project ID' });
+      res.status(400).json({ message: "Invalid project ID" });
       return;
     }
 
@@ -192,41 +210,46 @@ export const deleteProject = async (req: Request, res: Response): Promise<void> 
 
     // Check if project exists
     if (!project) {
-      res.status(404).json({ message: 'Project not found' });
+      res.status(404).json({ message: "Project not found" });
       return;
     }
 
     // Check if user owns project
     if (project.userId.toString() !== userId) {
-      res.status(403).json({ message: 'Not authorized to delete this project' });
+      res
+        .status(403)
+        .json({ message: "Not authorized to delete this project" });
       return;
     }
 
     // Delete project
     await Project.findByIdAndDelete(id);
 
-    res.status(200).json({ message: 'Project deleted successfully' });
+    res.status(200).json({ message: "Project deleted successfully" });
   } catch (error: any) {
-    console.error('Delete project error:', error);
+    console.error("Delete project error:", error);
     res.status(500).json({
-      message: 'Failed to delete project',
+      message: "Failed to delete project",
       error: error.message,
     });
   }
 };
 
 // Get public projects
-export const getPublicProjects = async (req: Request, res: Response): Promise<void> => {
+export const getPublicProjects = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { page = 1, limit = 10, search } = req.query;
-    
+
     const pageNum = parseInt(page as string, 10);
     const limitNum = parseInt(limit as string, 10);
     const skip = (pageNum - 1) * limitNum;
 
     // Build query for public projects
     const query: any = { isPublic: true };
-    
+
     // Add search functionality if provided
     if (search) {
       query.$text = { $search: search as string };
@@ -251,9 +274,9 @@ export const getPublicProjects = async (req: Request, res: Response): Promise<vo
       },
     });
   } catch (error: any) {
-    console.error('Get public projects error:', error);
+    console.error("Get public projects error:", error);
     res.status(500).json({
-      message: 'Failed to get public projects',
+      message: "Failed to get public projects",
       error: error.message,
     });
   }
