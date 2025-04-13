@@ -5,7 +5,14 @@ import { basePrompt as reactBasePrompt } from "./details/react";
 import { basePrompt as nodeBasePrompt } from "./details/node";
 import { BASE_PROMPT, getSystemPrompt } from "./prompt";
 import cors from "cors";
-import rateLimit from "express-rate-limit";
+import mongoose from "mongoose";
+import { CONSTANTS } from "./constants";
+import { rateLimitMiddleware } from "./middleware/rateLimitMiddleware";
+import { notFound, errorHandler } from "./middleware/errorMiddleware";
+
+// Import routes
+import authRoutes from "./routes/authRoutes";
+import projectRoutes from "./routes/projectRoutes";
 
 dotenv.config();
 
@@ -13,19 +20,18 @@ dotenv.config();
 const PORT = process.env.PORT || 3000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-const app = express();
+// Connect to MongoDB
+mongoose
+  .connect(CONSTANTS.MONGODB_URI)
+  .then(() => console.log("MongoDB Connected"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
-const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000,
-  limit: 5,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-});
+const app = express();
 
 // middleware
 app.use(express.json());
 app.use(cors());
-app.use(limiter);
+app.use(rateLimitMiddleware);
 
 const googleAI = new GoogleGenerativeAI(GEMINI_API_KEY!);
 
@@ -128,6 +134,14 @@ app.get("/", async (req, res) => {
   res.send("working");
 });
 
+// Use routes
+app.use("/auth", authRoutes);
+app.use("/projects", projectRoutes);
+
+// Apply error handling middleware
+app.use(notFound);
+app.use(errorHandler);
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-});
+}); 
