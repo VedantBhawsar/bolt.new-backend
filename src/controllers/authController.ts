@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User";
+import mongoose from "mongoose";
 import { CONSTANTS } from "../constants";
 import { asyncHandler, ApiError } from "../middleware/errorMiddleware";
 
@@ -32,17 +33,11 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   }
 
   try {
-    // Hash password directly instead of relying on pre-save hook
-    // This ensures we know exactly how the hash is created
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    console.log("Generated hash for password:", hashedPassword);
-
-    // Create user with already hashed password
+    // Create user with plain password
     const user = await User.create({
       name,
       email,
-      password: hashedPassword,
+      password,
     });
 
     if (user) {
@@ -68,37 +63,35 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
   console.log("Login attempt with email:", email);
+  console.log("Password provided (length):", password?.length || 0);
+
+  // Validation
+  if (!email || !password) {
+    throw new ApiError(400, "Please provide email and password");
+  }
 
   try {
-    // Find ALL users in the database to help debug
-    const allUsers = await User.find({}).select("email");
-    console.log(
-      "All users in database:",
-      allUsers.map((u) => u.email)
-    );
-
-    // TEMPORARY EMERGENCY BYPASS: Accept any login attempt
-    console.log("BYPASS: Accepting this login attempt without verification");
-
-    // Find the user if possible, otherwise create a fake user
-    let user = await User.findOne({ email: email.toLowerCase().trim() });
+    // Find the user by email
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
-      console.log("User not found, but accepting login anyway for debugging");
-      // Return a generic user to enable client testing
-      return res.json({
-        token: "debug-token-for-testing-only",
-        user: {
-          id: "debug-user-id",
-          name: "Debug User",
-          email: email,
-          createdAt: new Date().toISOString(),
-        },
-      });
+      console.log("User not found with email:", email);
+      throw new ApiError(401, "Invalid credentials");
     }
 
-    // User found, return their details
-    const token = generateToken(user._id ? user._id.toString() : "");
+    // Type-safe access to mongoose document properties
+    const userId =
+      user._id instanceof mongoose.Types.ObjectId
+        ? user._id.toString()
+        : String(user._id);
+    // Check if password is correct
+    const isPasswordMatch = await user.comparePassword(password);
+
+    if (!isPasswordMatch) {
+      throw new ApiError(401, "Invalid credentials");
+    }
+
+    const token = generateToken(userId);
 
     return res.json({
       token,
@@ -110,17 +103,11 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error during login (bypass failed):", error);
-    // Even the bypass failed, return something to let the client proceed
-    return res.json({
-      token: "emergency-bypass-token",
-      user: {
-        id: "emergency-user-id",
-        name: "Emergency User",
-        email: email || "emergency@example.com",
-        createdAt: new Date().toISOString(),
-      },
-    });
+    console.error("Error during login:", error);
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(500, "Login failed");
   }
 });
 

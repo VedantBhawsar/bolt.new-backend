@@ -53,8 +53,14 @@ UserSchema.methods.comparePassword = async function (
   candidatePassword: string
 ): Promise<boolean> {
   try {
-    // Use bcryptjs.compare for consistency
-    return await bcrypt.compare(candidatePassword, this.password);
+    console.log("Comparing passwords:");
+    console.log("Candidate password length:", candidatePassword.length);
+    console.log("Stored hash:", this.password);
+
+    // Use bcrypt.compare (from the imported package)
+    const isMatch = await bcrypt.compare(candidatePassword, this.password);
+    console.log("Password comparison result:", isMatch);
+    return isMatch;
   } catch (error) {
     console.error("Error comparing password:", error);
     return false;

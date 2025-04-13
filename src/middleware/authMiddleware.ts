@@ -31,6 +31,8 @@ export const protect = async (
       token = req.headers.authorization.split(" ")[1];
     }
 
+    console.log(token);
+
     // Check if token exists
     if (!token) {
       res.status(401).json({ message: "Not authorized, no token provided" });
@@ -39,9 +41,10 @@ export const protect = async (
 
     // Verify token
     const decoded = jwt.verify(token, CONSTANTS.JWT_SECRET) as { id: string };
-
+    console.log(decoded);
     // Check if user exists
-    const user = await User.findById(decoded.id).select("-password");
+    const user = await User.findById(decoded.id);
+    console.log(user);
     if (!user) {
       res.status(401).json({ message: "Not authorized, user not found" });
       return;
