@@ -42,6 +42,7 @@ app.post("/template", async (req, res) => {
 
     if (!prompt) {
       res.status(400).json({ error: "Prompt is required" });
+      return;
     }
 
     const projectTypeModel = googleAI.getGenerativeModel({
@@ -65,7 +66,9 @@ app.post("/template", async (req, res) => {
 
     if (!["reactjs", "nodejs"].includes(projectType)) {
       res.status(500).json({ error: "Failed to determine project type" });
+      return;
     }
+
     if (projectType === "reactjs") {
       res.status(200).json({
         prompts: [
@@ -82,7 +85,6 @@ app.post("/template", async (req, res) => {
         uiPrompts: [nodeBasePrompt],
       });
     }
-    res.status(200).send("you can't access this resources");
   } catch (error: any) {
     console.error("Error processing request:", error);
     if (!res.headersSent) {
@@ -144,4 +146,4 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-}); 
+});

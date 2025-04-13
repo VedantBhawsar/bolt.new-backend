@@ -52,7 +52,13 @@ UserSchema.pre("save", async function (next) {
 UserSchema.methods.comparePassword = async function (
   candidatePassword: string
 ): Promise<boolean> {
-  return bcrypt.compare(candidatePassword, this.password);
+  try {
+    // Use bcryptjs.compare for consistency
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    console.error("Error comparing password:", error);
+    return false;
+  }
 };
 
 export const User = mongoose.model<IUser>("User", UserSchema);
